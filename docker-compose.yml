@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+  mongodb:
+    image: mongo
+    ports:
+      - 127.0.0.1:27017:27017
+    restart: always
+    networks:
+      internal-sirduck:
+        aliases:
+            - mongodb
+    volumes:
+      - dbdata:/data/db
+  sirduck:
+    image: sirduck:latest
+    restart: always
+    networks:
+      - internal-sirduck
+    environment:
+      - MONGO_HOST=mongodb
+    env_file:
+      - .env
+
+networks:
+  internal-sirduck:
+
+volumes:
+  dbdata:

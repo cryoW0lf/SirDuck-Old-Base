@@ -1,0 +1,10 @@
+FROM openjdk:8-jdk-alpine as builder
+WORKDIR /app
+COPY . /app
+RUN ["/bin/sh", "gradlew", "clean", "copyDependencies", "classes"]
+
+FROM openjdk:8-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/build/dependencies dependencies
+COPY --from=builder /app/build/resources/main* /app/build/classes/java/main* /app/build/classes/kotlin/main* classes/
+CMD ["java", "-cp", "dependencies/*:classes", "pw.cryow0lf.sirduck.SirDuck"]

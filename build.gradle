@@ -1,0 +1,107 @@
+import com.bmuschko.gradle.docker.tasks.container.DockerCreateContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerStartContainer
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+import com.bmuschko.gradle.docker.tasks.image.DockerPullImage
+import com.bmuschko.gradle.docker.tasks.image.Dockerfile
+
+plugins({
+    id("java")
+    id("org.jetbrains.kotlin.jvm").version("1.2.60")
+    id("com.github.johnrengelman.shadow").version("2.0.4")
+    id("com.bmuschko.docker-remote-api").version("3.6.0")
+})
+
+group = project.property("group")
+version = project.property("version")
+sourceCompatibility = project.property("sourceversion")
+targetCompatibility = project.property("sourceversion")
+String mainClassName = project.property("mainClass")
+String imageName = "${project.name}"
+
+repositories({
+    jcenter()
+    mavenCentral()
+    mavenLocal()
+})
+
+dependencies({
+    compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    compile("net.dv8tion:JDA:3.8.1_437")
+    compile("org.apache.logging.log4j:log4j-core:2.11.+")
+})
+
+jar({
+    manifest({
+        attributes([
+                "Main-Class": mainClassName
+        ])
+    })
+})
+
+shadowJar({
+    classifier = "fat"
+    version = null
+})
+
+task runBot(type: JavaExec, dependsOn: "classes") {
+    if (project.hasProperty("debug")) {
+        environment("DEBUG", "")
+    }
+    if (file(".env").exists()) {
+        Properties properties = new Properties()
+        file(".env").withInputStream({
+            properties.load(it)
+            it.close()
+        })
+        properties.forEach({ key, value ->
+            environment(key as String, value)
+        })
+    }
+
+    classpath = sourceSets.main.runtimeClasspath
+    main = mainClassName
+    workingDir = "work/"
+}
+
+task copyDependencies(type: Copy) {
+    from(configurations.runtime)
+    into("build/dependencies")
+}
+
+task createDockerfile(type: Dockerfile) {
+    destFile = project.file("build/docker/Dockerfile")
+    from("openjdk:8-jre-alpine")
+    workingDir("/app")
+    if (!configurations.runtime.isEmpty())
+        copyFile("dependencies", "dependencies")
+    copyFile("resources/main* classes/java/main* classes/kotlin/main* ", "classes/")
+    defaultCommand("java", "-cp", "dependencies/*:classes", mainClassName)
+}
+createDockerfile.setGroup("docker")
+
+task buildImage(type: DockerBuildImage) {
+    inputDir = buildDir
+    dockerFile = createDockerfile.destFile
+    tags = ["${imageName}:${version}", "${imageName}:latest"]
+    dependsOn(classes, copyDependencies, createDockerfile)
+}
+buildImage.setGroup("docker")
+
+task pullMongoImage(type: DockerPullImage) {
+    repository = "mongo"
+    tag = "latest"
+}
+pullMongoImage.setGroup("docker")
+
+task createMongoContainer(type: DockerCreateContainer, dependsOn: pullMongoImage) {
+    targetImageId { pullMongoImage.getImageId() }
+    portBindings = [
+            "27017:27017"
+    ]
+}
+createMongoContainer.setGroup("docker")
+
+task startMongoContainer(type: DockerStartContainer, dependsOn: createMongoContainer) {
+    targetContainerId { createMongoContainer.getContainerId() }
+}
+startMongoContainer.setGroup("docker")
