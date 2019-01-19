@@ -47,7 +47,7 @@ test({
 })
 
 shadowJar({
-    classifier = "fat"
+    classifier = "all"
     version = null
 })
 
